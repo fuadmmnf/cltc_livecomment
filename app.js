@@ -1,41 +1,62 @@
-var createError = require('http-errors');
-var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+const express = require('express');
+const app = express();
+var bodyParser = require('body-parser');
+var cors = require('cors');
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+app.use(cors());
+app.use(bodyParser.json());
 
-var app = express();
+const io = require('socket.io')(server);
+var mysql = require('mysql');
+var connection = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: 'madladsIncqwer1234',
+    database: 'chinese_app'
+});
+connection.connect();
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'pug');
 
-app.use(logger('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.use('/', indexRouter);
-app.use('/users', usersRouter);
-
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  next(createError(404));
+const server = app.listen(3001, function () {
+    console.log('server running on port 3001');
 });
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
 
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+app.get('get/messages/:live_id', function (req, res) {
+    var liveClassMessagesQuery = `SELECT * FROM 'messages' WHERE 'live_id' = ${req.params.live_id}`;
+    connection.query(liveClassMessagesQuery, function (error, results, fields) {
+        if (error) throw error;
+        res.status(200);
+        res.send(results);
+    });
 });
 
-module.exports = app;
+
+io.on('connection', function (socket) {
+
+    socket.on('live_comment-signal', function (data) {
+
+        var storeMessageToTableQuery = `INSERT INTO 'messages' ('id', 'user_id', 'live_id', 'content', 'created_at', 'updated_at') VALUES (NULL, ${data.user_id}, ${data.live_id}, ${data.message}, NULL, NULL);`;
+        connection.query(storeMessageToTableQuery, function (error, results, fields) {
+            if (error) throw error;
+            io.emit('live_comment-submit', results);
+        });
+
+    });
+
+
+    socket.on('quit', function () {
+        socket.disconnect();
+    });
+
+    socket.on('disconnect', function () {
+        console.log('disconnected: ' + socket.id);
+        // console.log(socket.id);
+
+    });
+
+
+});
+
+
+
